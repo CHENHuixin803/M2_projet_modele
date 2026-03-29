@@ -9,6 +9,7 @@ Ce dépôt contient les codes sources pour le projet de simulation en hémodynam
 
 | Fichier | Description |
 | :--- | :--- |
+| **`Rapport.pdf`** | Rapport du projet |
 | **`Ex1_CrosseAortique.edp`** | Simulation de l'écoulement dans la crosse aortique (affichage en temps réel) |
 | **`Ex1_CrosseAortique_Data.edp`** | Simulation de la crosse aortique et extraction des données `.txt` (Pression et Débit) |
 | **`Ex1_Q4b_Plot.py`** | Script Python pour tracer l'évolution des pressions et débits (Question 1.4b) |
