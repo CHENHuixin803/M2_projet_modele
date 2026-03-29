@@ -1,0 +1,172 @@
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+//                                                  Maillage 
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+// Paramètres
+real R = 1;
+real rin = 5;
+real rho = 1;       // densite du sang
+real mu = 0.035;    // viscosite dynamique
+
+real x1 = R, y1 = -R;
+real x2 = R, y2 = 0;
+real x3 = R + 2*rin, y3 = 0;
+real x4 = R + 2*rin, y4 = -5*R;
+real x5 = 3*R + 2*rin, y5 = -5*R;
+real x6 = 3*R + 2*rin, y6 = 0;
+real x7 = -R, y7 = 0;
+real x8 = -R, y8 = -R;
+real xcercle = (x2 + x3)/2, ycercle = 0;
+real petitrayon = (x3-x2)/2;
+real grandrayon = (x6-x7)/2;
+
+// Création des bords
+border c1 (t = x8, x1){x = t; y = y1; label = 1;};
+border c2 (t = y1, y2){x = x1; y = t; label = 2;};
+border c3 (t = 0, 1){ x = xcercle - petitrayon*cos(pi*t); y = petitrayon*sin(pi*t); label = 2; };
+border c4 (t = 0, y4){x = x3; y = t; label = 2;};
+border c5 (t = x4, x5){x = t; y = y4; label = 3;};
+border c6 (t = y5, y6){x = x5; y = t; label = 2;};
+border c7 (t = 1, 0){ x = xcercle - grandrayon*cos(pi*t); y = grandrayon*sin(pi*t); label = 2; };
+border c8 (t = y7,y8){x = x7; y = t; label = 2;};
+
+// Création du maillage et visualisation
+real h = 0.25; 
+real petcircon = pi*(x3-x2)/2;
+real gracircon = pi*(x6-x7)/2;
+mesh Th = buildmesh(
+    c1(2*R/h)+c2(R/h)+c3(petcircon/h)+c4(5*R/h)
+    +c5(2*R/h)+c6(5*R/h)+c7(gracircon/h)+c8(R/h));
+plot(Th, wait=1,cmm="Maillage");
+
+// Calcul de la taille moyenne du maillage
+fespace Ph(Th, P0);
+Ph hk = hTriangle;
+real aireTotale = Th.area;
+real hMoyen = int2d(Th)(hk) / aireTotale;
+
+cout << "==========================================" << endl;
+cout << "Aire totale du domaine : " << aireTotale << endl;
+cout << "Nombre de triangles (Th.nt) : " << Th.nt << endl;
+cout << "Taille moyenne du maillage (h moyen) : " << hMoyen << endl;
+cout << "==========================================" << endl;
+
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+//                                  Résolution du problème :  
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+real t = 0;
+real T = 8;         // temps final
+real tau = 0.01;
+real Nsteps = T/tau;
+
+real pd = 8 * 13332.2;
+// real Rd = 100.0;    
+real pOut = 0.0;
+
+func real g(real time) {
+    real period = 0.8;
+    real tmod = time - floor(time / period) * period;
+    if (tmod <= 0.4) {
+        return 200.0 * sin(pi * tmod / 0.4);
+    } else {
+        return 0.0;
+    }
+}
+macro uiny(tt)(g(tt)*(R^2-x^2)/(R^2))//
+macro div(ux,uy) (dx(ux)+dy(uy))//
+macro conv(uxold, uyold, f) (uxold*dx(f) + uyold*dy(f)) //
+macro minZero(x) ( (x < 0.0) ? x : 0.0 ) //
+
+fespace Vh(Th, P1);
+Vh ux, uy, p;
+Vh vx, vy, q;
+Vh uxold, uyold, pold;
+
+fespace Rh(Th, P0);
+Rh tauK;
+
+problem NS(ux, uy, p, vx, vy, q) = 
+  // derive du temps
+  int2d(Th)((rho/tau)*(ux*vx + uy*vy))
+  - int2d(Th)((rho/tau)*(uxold*vx + uyold*vy))
+
+  // convection
+  + int2d(Th)(rho*conv(uxold, uyold, ux) * vx + 
+              rho*conv(uxold, uyold, uy) * vy )
+  + int2d(Th)( (rho/2.0) * div(uxold, uyold) * (ux*vx + uy*vy) )
+
+  // diffusion
+  + int2d(Th)( mu * (dx(ux)*dx(vx) + dy(ux)*dy(vx) + 
+                     dx(uy)*dx(vy) + dy(uy)*dy(vy)) )
+  - int2d(Th)( p * div(vx, vy) )
+  + int2d(Th)( q * div(ux, uy) )
+
+  // stabilisation
+  - int1d(Th, 3)( (rho/2.0) * minZero(uxold*N.x + uyold*N.y) * (ux*vx + uy*vy) )
+
+  // SUPG
+  + int2d(Th)( tauK * ((rho*conv(uxold, uyold, ux) + dx(p)) * (rho*conv(uxold, uyold, vx) + dx(q))
+                     + (rho*conv(uxold, uyold, uy) + dy(p)) * (rho*conv(uxold, uyold, vy) + dy(q))) )
+
+  // p_out
+  + int1d(Th, 3)( pOut * (vx*N.x + vy*N.y))
+
+  // condition Dirichlet
+  +on(1, ux=0, uy=uiny(t))
+  +on(2, ux=0, uy=0);
+
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+//                                  Extraction des données :  
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+
+real lenIn = int1d(Th, 1)( 1.0 );
+real lenOut = int1d(Th, 3)( 1.0 );
+real[int] RdList = [0, 100, 200, 300];
+
+for (int i = 0; i < RdList.n; i++) {
+    real Rd = RdList[i];
+    cout << ">>>>  Rd = " << Rd << " <<<<" << endl;
+
+    t = 0;
+    uxold = 0.0; uyold = 0.0; pold = 0.0; pOut = 0.0;
+
+    real[int] historyT(Nsteps), historyPIn(Nsteps), historyPOut(Nsteps), historyQIn(Nsteps), historyQOut(Nsteps);
+
+    for(int n = 0; n < Nsteps; n++){
+        t += tau;
+        
+        pOut = pd + Rd * int1d(Th, 3)( uxold*N.x + uyold*N.y );
+        tauK = 0.1 / (sqrt(4.0*(uxold^2 + uyold^2)/(hTriangle^2) + 16.0*(mu/rho)^2/(hTriangle^4)) + 1e-15);
+        
+        NS; 
+        
+        historyT[n] = t;
+        
+        // P_avg = (1/|w|) * int(p)
+        historyPIn[n]  = int1d(Th, 1)( p ) / lenIn;
+        historyPOut[n] = int1d(Th, 3)( p ) / lenOut;
+        
+        // Q = int(u * n) 
+        historyQIn[n]  = int1d(Th, 1)( ux*N.x + uy*N.y ); 
+        historyQOut[n] = int1d(Th, 3)( ux*N.x + uy*N.y ); 
+
+        uxold = ux; uyold = uy;
+        // plot([ux,uy], coef=0.05, wait=0, cmm="Rd=" + Rd + ", t=" + t);
+    }
+
+    ofstream fileout("Resultats_Rd_" + Rd + ".txt");
+    fileout << "Time\tP_in\tP_out\tQ_in\tQ_out\n";
+    for(int n = 0; n < Nsteps; n++){
+        fileout << historyT[n] << "\t"
+                << historyPIn[n] << "\t"
+                << historyPOut[n] << "\t"
+                << historyQIn[n] << "\t"
+                << historyQOut[n] << "\n";
+    }
+    cout << ">> Resultats_Rd_" << Rd << ".txt" << endl;
+}

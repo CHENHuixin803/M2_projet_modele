@@ -1,0 +1,128 @@
+// maillage
+
+// Création des bords
+border c1 (t = 0, 1){x = t; y = 0; label = 2;};
+border c2 (t = 1, 2){x = t; y = -t + 1; label = 2;};
+border c3 (t = 2, 2.3){x = t; y = t - 3; label = 3;};
+border c4 (t = 2.3, 1.4){x = t; y = -t +1.6; label = 2;};
+border c5 (t = 1.4, 2.2){x = t; y = t - 1.2; label = 2;};
+border c6 (t = 2.2, 2){x = t; y = -t + 3.2; label = 4;};
+border c7 (t = 2, 1.2){x = t; y = t - 0.8; label = 2;};
+border c8 (t = 1.2, 0){x = t; y = 0.4; label = 2;};
+border c9 (t = 0.4, 0){x = 0; y = t; label = 1;};
+
+// Création du maillage et visualisation
+real h = 0.05; 
+real d2 = sqrt(2);
+real d3 = sqrt(0.3^2+0.3^2);
+real d4 = sqrt(0.7^2+0.9^2);
+real d5 = sqrt(0.8^2+0.8^2);
+real d6 = sqrt(0.2^2+0.2^2);
+real d7 = sqrt(0.8^2+0.8^2);
+mesh Th = buildmesh(
+    c1(1/h)+c2(d2/h)+c3(d3/h)+c4(d4/h)
+    +c5(d5/h)+c6(d6/h)+c7(d7/h)+c8(1.2/h)+c9(0.4/h));
+plot(Th, wait=1,cmm="Maillage");
+
+// Calcul de la taille moyenne du maillage
+fespace Ph(Th, P0);
+Ph hk = hTriangle;
+real aireTotale = Th.area;
+real hMoyen = int2d(Th)(hk) / aireTotale;
+
+cout << "==========================================" << endl;
+cout << "Aire totale du domaine : " << aireTotale << endl;
+cout << "Nombre de triangles (Th.nt) : " << Th.nt << endl;
+cout << "Taille moyenne du maillage (h moyen) : " << hMoyen << endl;
+cout << "==========================================" << endl;
+
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+//                                  Résolution du problème :  
+// ------------------------------------------------------------------------------------------------------------- //
+// ------------------------------------------------------------------------------------------------------------- //
+real t = 0;
+real T = 8;         // temps final
+real tau = 0.01;
+real Nstep = T/tau;
+
+real rho = 1;       // densite du sang
+real mu = 0.035;    // viscosite dynamique
+real pd = 8 * 13332.2;
+real Rd = 100.0;    
+real p1out = 0.0;
+real p2out = 0.0;
+
+macro uinx(tt)(g(tt)*(0.4-y)*y)//
+func real g(real time) {
+    real period = 0.8;
+    real tmod = time - floor(time / period) * period;
+    if (tmod <= 0.4) {
+        return 1000 * sin(pi * tmod / 0.4);
+    } else {
+        return 0.0;
+    }
+}
+macro div(ux,uy) (dx(ux)+dy(uy))//
+macro conv(uxold, uyold, f) (uxold*dx(f) + uyold*dy(f)) //
+macro minZero(x) ( (x < 0.0) ? x : 0.0 ) //
+
+fespace Vh(Th, P1);
+Vh ux, uy, p;
+Vh vx, vy, q;
+Vh uxold = 0.0, uyold = 0.0, pold = 0.0;
+
+fespace Rh(Th, P0);
+Rh tauK;
+
+problem NS(ux, uy, p, vx, vy, q) = 
+  // derive du temps
+  int2d(Th)((rho/tau)*(ux*vx + uy*vy))
+  - int2d(Th)((rho/tau)*(uxold*vx + uyold*vy))
+
+  // convection
+  + int2d(Th)(rho*conv(uxold, uyold, ux) * vx + 
+              rho*conv(uxold, uyold, uy) * vy )
+  + int2d(Th)( (rho/2.0) * div(uxold, uyold) * (ux*vx + uy*vy) )
+
+  // diffusion
+  + int2d(Th)( mu * (dx(ux)*dx(vx) + dy(ux)*dy(vx) + 
+                     dx(uy)*dx(vy) + dy(uy)*dy(vy)) )
+  - int2d(Th)( p * div(vx, vy) )
+  + int2d(Th)( q * div(ux, uy) )
+
+  // stabilisation
+  - int1d(Th, 3)( (rho/2.0) * minZero(uxold*N.x + uyold*N.y) * (ux*vx + uy*vy) )
+  - int1d(Th, 4)( (rho/2.0) * minZero(uxold*N.x + uyold*N.y) * (ux*vx + uy*vy) )
+
+  // SUPG
+  + int2d(Th)( tauK * ((rho*conv(uxold, uyold, ux) + dx(p)) * (rho*conv(uxold, uyold, vx) + dx(q))
+                     + (rho*conv(uxold, uyold, uy) + dy(p)) * (rho*conv(uxold, uyold, vy) + dy(q))) )
+
+  // p_out
+  + int1d(Th, 3)( p1out * (N.x*vx + N.y*vy) ) 
+  + int1d(Th, 4)( p2out * (N.x*vx + N.y*vy) )
+
+  // condition Dirichlet
+  +on(1, ux=uinx(t), uy=0)
+  +on(2, ux=0, uy=0);
+
+for(int n=1;n<Nstep;n++){
+  t += tau;
+  
+  p1out = pd + Rd * int1d(Th, 3)( uxold*N.x + uyold*N.y );
+  p2out = pd + Rd * int1d(Th, 4)( uxold*N.x + uyold*N.y );
+  tauK = 0.1 / (sqrt(4.0*(uxold^2 + uyold^2)/(hTriangle^2) + 16.0*(mu/rho)^2/(hTriangle^4)) + 1e-15);
+
+  NS;
+  uxold = ux;
+  uyold = uy;
+
+  // velocity plot 
+  plot([ux,uy], coef=0.05, wait=0, cmm="Temps t=" + t);
+
+  // pressure plot 
+  // plot(p,wait=1,fill=true,value=true);  
+
+}
+
