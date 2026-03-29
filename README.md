@@ -1,5 +1,5 @@
 # Projet de Simulation en Hémodynamique
-**Cours :** Modèles mathématiques appliqués à la biologie
+**Cours :** M2 - Modèles mathématiques appliqués à la biologie
 
 **Auteur :** CHEN Huixin(21319577)
 
