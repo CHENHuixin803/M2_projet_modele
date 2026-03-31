@@ -60,7 +60,7 @@ cout << "==========================================" << endl;
 real t = 0;
 real T = 8;         // temps final
 real tau = 0.01;
-real N = T/tau;
+real Nstep = T/tau;
 
 real pd = 8 * 13332.2;
 real Rd = 100.0;    
@@ -118,7 +118,7 @@ problem NS(ux, uy, p, vx, vy, q) =
   +on(1, ux=0, uy=uiny(t))
   +on(2, ux=0, uy=0);
 
-for(int n=1;n<N;n++){
+for(int n=1;n<Nstep;n++){
   t += tau;
   pOut = pd + Rd * int1d(Th, 3)( -uyold );
   tauK = 0.1 / (sqrt(4.0*(uxold^2 + uyold^2)/(hTriangle^2) + 16.0*(mu/rho)^2/(hTriangle^4)) + 1e-15);
